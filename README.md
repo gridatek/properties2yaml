@@ -326,7 +326,6 @@ properties2yaml/
 
 - **Spring Boot 3.2.0**: Application framework
 - **SnakeYAML 2.2**: YAML processing
-- **Lombok**: Reduce boilerplate code
 - **JUnit 5**: Testing framework
 - **Maven**: Build tool
 - **JaCoCo**: Code coverage
