@@ -397,9 +397,10 @@ class PropertiesToYamlConverterComplexTest {
                     config.items[0]=arrayValue
                     """;
 
-            // This is a conflict scenario - the second one should win or be handled gracefully
-            String yamlOutput = converter.convert(properties);
-            assertThat(yamlOutput).isNotEmpty();
+            // This is a conflict scenario - it's expected to throw an exception
+            // as the same property key cannot be both a simple value and an array
+            assertThatThrownBy(() -> converter.convert(properties))
+                    .isInstanceOf(RuntimeException.class);
         }
 
         @Test

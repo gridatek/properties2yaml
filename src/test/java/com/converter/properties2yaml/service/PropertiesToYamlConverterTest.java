@@ -176,4 +176,155 @@ class PropertiesToYamlConverterTest {
 
         assertTrue(yaml.contains("endpoint: https://api.example.com/v1/users"));
     }
+
+    @Test
+    void testPriorityBasedSortingSpringFirst() {
+        String properties = """
+                custom.property=value1
+                spring.application.name=TestApp
+                app.name=MyApp
+                server.port=8080
+                zebra.config=last
+                """;
+        String yaml = converter.convert(properties);
+
+        // Spring properties should come first
+        int springIndex = yaml.indexOf("spring:");
+        int serverIndex = yaml.indexOf("server:");
+        int appIndex = yaml.indexOf("app:");
+        int customIndex = yaml.indexOf("custom:");
+        int zebraIndex = yaml.indexOf("zebra:");
+
+        assertTrue(springIndex < serverIndex, "Spring properties should come before server properties");
+        assertTrue(serverIndex < appIndex, "Server properties should come before app properties");
+        assertTrue(appIndex < customIndex, "App properties should come before custom properties");
+        assertTrue(appIndex < zebraIndex, "App properties should come before custom zebra properties");
+    }
+
+    @Test
+    void testPriorityBasedSortingCommonPropertiesSecond() {
+        String properties = """
+                custom.value=test
+                logging.level.root=INFO
+                management.endpoints.web.exposure.include=health
+                security.oauth2.client.registration.google.client-id=123
+                """;
+        String yaml = converter.convert(properties);
+
+        // Common properties (logging, management, security) should come before custom
+        int loggingIndex = yaml.indexOf("logging:");
+        int managementIndex = yaml.indexOf("management:");
+        int securityIndex = yaml.indexOf("security:");
+        int customIndex = yaml.indexOf("custom:");
+
+        assertTrue(loggingIndex < customIndex, "Logging properties should come before custom properties");
+        assertTrue(managementIndex < customIndex, "Management properties should come before custom properties");
+        assertTrue(securityIndex < customIndex, "Security properties should come before custom properties");
+    }
+
+    @Test
+    void testPriorityBasedSortingApplicationPropertiesThird() {
+        String properties = """
+                zebra.custom=value1
+                application.title=MyApp
+                app.version=1.0.0
+                custom.setting=test
+                """;
+        String yaml = converter.convert(properties);
+
+        // App/application properties should come before custom but in order
+        int appIndex = yaml.indexOf("app:");
+        int applicationIndex = yaml.indexOf("application:");
+        int customIndex = yaml.indexOf("custom:");
+        int zebraIndex = yaml.indexOf("zebra:");
+
+        assertTrue(appIndex < customIndex, "App properties should come before custom properties");
+        assertTrue(applicationIndex < customIndex, "Application properties should come before custom properties");
+        assertTrue(appIndex < zebraIndex, "App properties should come before zebra properties");
+        assertTrue(applicationIndex < zebraIndex, "Application properties should come before zebra properties");
+    }
+
+    @Test
+    void testAlphabeticalSortingWithinSamePriority() {
+        String properties = """
+                spring.jpa.hibernate.ddl-auto=update
+                spring.datasource.url=jdbc:mysql://localhost/db
+                spring.application.name=TestApp
+                """;
+        String yaml = converter.convert(properties);
+
+        // Within spring properties, they should be alphabetically sorted
+        int applicationIndex = yaml.indexOf("application:");
+        int datasourceIndex = yaml.indexOf("datasource:");
+        int jpaIndex = yaml.indexOf("jpa:");
+
+        assertTrue(applicationIndex < datasourceIndex, "spring.application should come before spring.datasource");
+        assertTrue(datasourceIndex < jpaIndex, "spring.datasource should come before spring.jpa");
+    }
+
+    @Test
+    void testComplexPrioritySortingAllCategories() {
+        String properties = """
+                xyz.custom=value
+                server.port=8080
+                spring.application.name=TestApp
+                app.version=1.0.0
+                logging.level.root=INFO
+                custom.property=test
+                management.endpoints.enabled=true
+                application.title=MyTitle
+                security.user.name=admin
+                """;
+        String yaml = converter.convert(properties);
+
+        // Get indices of all properties
+        int springIndex = yaml.indexOf("spring:");
+        int serverIndex = yaml.indexOf("server:");
+        int loggingIndex = yaml.indexOf("logging:");
+        int managementIndex = yaml.indexOf("management:");
+        int securityIndex = yaml.indexOf("security:");
+        int appIndex = yaml.indexOf("app:");
+        int applicationIndex = yaml.indexOf("application:");
+        int customIndex = yaml.indexOf("custom:");
+        int xyzIndex = yaml.indexOf("xyz:");
+
+        // Verify priority 1 (spring) comes first
+        assertTrue(springIndex < serverIndex && springIndex < loggingIndex && springIndex < appIndex && springIndex < customIndex);
+
+        // Verify priority 2 (server, logging, management, security) comes before priority 3 and 4
+        assertTrue(serverIndex < appIndex && serverIndex < customIndex);
+        assertTrue(loggingIndex < appIndex && loggingIndex < customIndex);
+        assertTrue(managementIndex < appIndex && managementIndex < customIndex);
+        assertTrue(securityIndex < appIndex && securityIndex < customIndex);
+
+        // Verify priority 3 (app, application) comes before priority 4 (custom)
+        assertTrue(appIndex < customIndex && appIndex < xyzIndex);
+        assertTrue(applicationIndex < customIndex && applicationIndex < xyzIndex);
+    }
+
+    @Test
+    void testSortingPreservesNestedStructure() {
+        String properties = """
+                custom.nested.deep.value=test
+                spring.datasource.url=jdbc:mysql://localhost/db
+                spring.datasource.username=user
+                app.config.setting=value
+                """;
+        String yaml = converter.convert(properties);
+
+        // Verify spring comes first
+        int springIndex = yaml.indexOf("spring:");
+        int appIndex = yaml.indexOf("app:");
+        int customIndex = yaml.indexOf("custom:");
+
+        assertTrue(springIndex < appIndex);
+        assertTrue(appIndex < customIndex);
+
+        // Verify nested structure is preserved
+        assertTrue(yaml.contains("datasource:"));
+        assertTrue(yaml.contains("url:"));
+        assertTrue(yaml.contains("username:"));
+        assertTrue(yaml.contains("nested:"));
+        assertTrue(yaml.contains("deep:"));
+    }
 }

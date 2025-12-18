@@ -66,14 +66,63 @@ public class PropertiesToYamlConverter {
      * @return the YAML string
      */
     private String convertPropertiesToYaml(Properties properties) {
-        Map<String, Object> yamlMap = new TreeMap<>();
+        // Sort properties by category and then alphabetically
+        List<String> sortedKeys = new ArrayList<>(properties.stringPropertyNames());
+        sortedKeys.sort(new PropertyKeyComparator());
 
-        for (String key : properties.stringPropertyNames()) {
+        // Use LinkedHashMap to preserve insertion order
+        Map<String, Object> yamlMap = new LinkedHashMap<>();
+
+        for (String key : sortedKeys) {
             String value = properties.getProperty(key);
             addToYamlMap(yamlMap, key, convertValue(value));
         }
 
         return toYamlString(yamlMap);
+    }
+
+    /**
+     * Comparator for sorting property keys by category and then alphabetically.
+     * Order: Spring Boot properties first, then common properties, then custom properties.
+     */
+    private static class PropertyKeyComparator implements Comparator<String> {
+        @Override
+        public int compare(String key1, String key2) {
+            int priority1 = getPropertyPriority(key1);
+            int priority2 = getPropertyPriority(key2);
+
+            if (priority1 != priority2) {
+                return Integer.compare(priority1, priority2);
+            }
+
+            // Same priority, sort alphabetically
+            return key1.compareTo(key2);
+        }
+
+        /**
+         * Determines the priority of a property key.
+         * Lower numbers = higher priority (displayed first).
+         */
+        private int getPropertyPriority(String key) {
+            // Spring Boot core properties - highest priority
+            if (key.startsWith("spring.")) {
+                return 1;
+            }
+
+            // Common Spring/Boot properties
+            if (key.startsWith("server.") || key.startsWith("management.") ||
+                key.startsWith("logging.") || key.startsWith("security.")) {
+                return 2;
+            }
+
+            // Application properties
+            if (key.startsWith("app.") || key.startsWith("application.")) {
+                return 3;
+            }
+
+            // Custom properties - lowest priority
+            return 4;
+        }
     }
 
     /**
@@ -104,14 +153,14 @@ public class PropertiesToYamlConverter {
 
                     // Ensure list has enough elements
                     while (list.size() <= index) {
-                        list.add(new TreeMap<String, Object>());
+                        list.add(new LinkedHashMap<String, Object>());
                     }
 
                     Object element = list.get(index);
                     if (element instanceof Map) {
                         currentMap = (Map<String, Object>) element;
                     } else {
-                        Map<String, Object> newMap = new TreeMap<>();
+                        Map<String, Object> newMap = new LinkedHashMap<>();
                         list.set(index, newMap);
                         currentMap = newMap;
                     }
@@ -122,7 +171,7 @@ public class PropertiesToYamlConverter {
                     if (existing instanceof Map) {
                         currentMap = (Map<String, Object>) existing;
                     } else {
-                        Map<String, Object> newMap = new TreeMap<>();
+                        Map<String, Object> newMap = new LinkedHashMap<>();
                         currentMap.put(mapKey, newMap);
                         currentMap = newMap;
                     }
@@ -132,7 +181,7 @@ public class PropertiesToYamlConverter {
                 if (existing instanceof Map) {
                     currentMap = (Map<String, Object>) existing;
                 } else {
-                    Map<String, Object> newMap = new TreeMap<>();
+                    Map<String, Object> newMap = new LinkedHashMap<>();
                     currentMap.put(part, newMap);
                     currentMap = newMap;
                 }
