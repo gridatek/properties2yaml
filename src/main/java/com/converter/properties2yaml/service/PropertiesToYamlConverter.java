@@ -94,22 +94,38 @@ public class PropertiesToYamlConverter {
             // Handle array notation like items[0]
             if (part.contains("[")) {
                 String arrayKey = part.substring(0, part.indexOf('['));
-                int index = Integer.parseInt(part.substring(part.indexOf('[') + 1, part.indexOf(']')));
+                String indexStr = part.substring(part.indexOf('[') + 1, part.indexOf(']'));
 
-                List<Object> list = (List<Object>) currentMap.computeIfAbsent(arrayKey, k -> new ArrayList<>());
+                // Check if the content between brackets is a valid integer
+                if (isNumeric(indexStr)) {
+                    int index = Integer.parseInt(indexStr);
 
-                // Ensure list has enough elements
-                while (list.size() <= index) {
-                    list.add(new TreeMap<String, Object>());
-                }
+                    List<Object> list = (List<Object>) currentMap.computeIfAbsent(arrayKey, k -> new ArrayList<>());
 
-                Object element = list.get(index);
-                if (element instanceof Map) {
-                    currentMap = (Map<String, Object>) element;
+                    // Ensure list has enough elements
+                    while (list.size() <= index) {
+                        list.add(new TreeMap<String, Object>());
+                    }
+
+                    Object element = list.get(index);
+                    if (element instanceof Map) {
+                        currentMap = (Map<String, Object>) element;
+                    } else {
+                        Map<String, Object> newMap = new TreeMap<>();
+                        list.set(index, newMap);
+                        currentMap = newMap;
+                    }
                 } else {
-                    Map<String, Object> newMap = new TreeMap<>();
-                    list.set(index, newMap);
-                    currentMap = newMap;
+                    // Treat it as a map key (e.g., [/**])
+                    String mapKey = arrayKey.isEmpty() ? "[" + indexStr + "]" : arrayKey + "[" + indexStr + "]";
+                    Object existing = currentMap.get(mapKey);
+                    if (existing instanceof Map) {
+                        currentMap = (Map<String, Object>) existing;
+                    } else {
+                        Map<String, Object> newMap = new TreeMap<>();
+                        currentMap.put(mapKey, newMap);
+                        currentMap = newMap;
+                    }
                 }
             } else {
                 Object existing = currentMap.get(part);
@@ -128,16 +144,40 @@ public class PropertiesToYamlConverter {
         // Handle array notation in the last part
         if (lastPart.contains("[")) {
             String arrayKey = lastPart.substring(0, lastPart.indexOf('['));
-            int index = Integer.parseInt(lastPart.substring(lastPart.indexOf('[') + 1, lastPart.indexOf(']')));
+            String indexStr = lastPart.substring(lastPart.indexOf('[') + 1, lastPart.indexOf(']'));
 
-            List<Object> list = (List<Object>) currentMap.computeIfAbsent(arrayKey, k -> new ArrayList<>());
+            // Check if the content between brackets is a valid integer
+            if (isNumeric(indexStr)) {
+                int index = Integer.parseInt(indexStr);
 
-            while (list.size() <= index) {
-                list.add(null);
+                List<Object> list = (List<Object>) currentMap.computeIfAbsent(arrayKey, k -> new ArrayList<>());
+
+                while (list.size() <= index) {
+                    list.add(null);
+                }
+                list.set(index, value);
+            } else {
+                // Treat it as a map key (e.g., [/**])
+                String mapKey = arrayKey.isEmpty() ? "[" + indexStr + "]" : arrayKey + "[" + indexStr + "]";
+                currentMap.put(mapKey, value);
             }
-            list.set(index, value);
         } else {
             currentMap.put(lastPart, value);
+        }
+    }
+
+    /**
+     * Check if a string is numeric
+     */
+    private boolean isNumeric(String str) {
+        if (str == null || str.isEmpty()) {
+            return false;
+        }
+        try {
+            Integer.parseInt(str);
+            return true;
+        } catch (NumberFormatException e) {
+            return false;
         }
     }
 
