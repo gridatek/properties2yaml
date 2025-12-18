@@ -355,11 +355,17 @@ public class PropertiesToYamlConverter {
                                        Map<String, List<String>> commentMap,
                                        int indentLevel, String keyPrefix) {
         String indent = "  ".repeat(indentLevel);
+        boolean isFirstEntry = true;
 
         for (Map.Entry<String, Object> entry : map.entrySet()) {
             String key = entry.getKey();
             Object value = entry.getValue();
             String fullKey = keyPrefix.isEmpty() ? key : keyPrefix + "." + key;
+
+            if (indentLevel == 0 && !isFirstEntry) {
+                sb.append("\n");
+            }
+            isFirstEntry = false;
 
             List<String> comments = commentMap.get(fullKey);
             if (comments != null && !comments.isEmpty()) {
