@@ -30,7 +30,7 @@ public class ConversionController {
     @PostMapping(consumes = MediaType.APPLICATION_JSON_VALUE, produces = MediaType.APPLICATION_JSON_VALUE)
     public ResponseEntity<ConversionResponse> convert(@RequestBody ConversionRequest request) {
         try {
-            String yamlContent = converter.convert(request.getPropertiesContent());
+            String yamlContent = converter.convert(request.getPropertiesContent(), request.isPreserveComments());
             return ResponseEntity.ok(ConversionResponse.success(yamlContent));
         } catch (Exception e) {
             return ResponseEntity.badRequest()
@@ -45,9 +45,10 @@ public class ConversionController {
      * @return the YAML content as plain text
      */
     @PostMapping(value = "/text", consumes = MediaType.TEXT_PLAIN_VALUE, produces = "text/yaml")
-    public ResponseEntity<String> convertText(@RequestBody String propertiesContent) {
+    public ResponseEntity<String> convertText(@RequestBody String propertiesContent,
+                                              @RequestParam(defaultValue = "false") boolean preserveComments) {
         try {
-            String yamlContent = converter.convert(propertiesContent);
+            String yamlContent = converter.convert(propertiesContent, preserveComments);
             return ResponseEntity.ok(yamlContent);
         } catch (Exception e) {
             return ResponseEntity.badRequest().body("# Error: " + e.getMessage());
@@ -61,10 +62,11 @@ public class ConversionController {
      * @return the conversion response with YAML content
      */
     @PostMapping(value = "/file", consumes = MediaType.MULTIPART_FORM_DATA_VALUE, produces = MediaType.APPLICATION_JSON_VALUE)
-    public ResponseEntity<ConversionResponse> convertFile(@RequestParam("file") MultipartFile file) {
+    public ResponseEntity<ConversionResponse> convertFile(@RequestParam("file") MultipartFile file,
+                                                          @RequestParam(defaultValue = "false") boolean preserveComments) {
         try {
             String propertiesContent = new String(file.getBytes(), StandardCharsets.UTF_8);
-            String yamlContent = converter.convert(propertiesContent);
+            String yamlContent = converter.convert(propertiesContent, preserveComments);
             return ResponseEntity.ok(ConversionResponse.success(yamlContent));
         } catch (IOException e) {
             return ResponseEntity.badRequest()
@@ -82,10 +84,11 @@ public class ConversionController {
      * @return the YAML content as a downloadable file
      */
     @PostMapping(value = "/file/download", consumes = MediaType.MULTIPART_FORM_DATA_VALUE, produces = "text/yaml")
-    public ResponseEntity<String> convertFileDownload(@RequestParam("file") MultipartFile file) {
+    public ResponseEntity<String> convertFileDownload(@RequestParam("file") MultipartFile file,
+                                                      @RequestParam(defaultValue = "false") boolean preserveComments) {
         try {
             String propertiesContent = new String(file.getBytes(), StandardCharsets.UTF_8);
-            String yamlContent = converter.convert(propertiesContent);
+            String yamlContent = converter.convert(propertiesContent, preserveComments);
 
             String originalFilename = file.getOriginalFilename();
             String outputFilename = originalFilename != null

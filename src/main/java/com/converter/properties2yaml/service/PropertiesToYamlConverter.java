@@ -12,6 +12,8 @@ import java.util.*;
 @Service
 public class PropertiesToYamlConverter {
 
+    private final PropertiesParser parser = new PropertiesParser();
+
     /**
      * Converts a properties string to YAML format.
      *
@@ -19,13 +21,29 @@ public class PropertiesToYamlConverter {
      * @return the converted YAML string
      */
     public String convert(String propertiesContent) {
-        Properties properties = new Properties();
-        try (StringReader reader = new StringReader(propertiesContent)) {
-            properties.load(reader);
-        } catch (IOException e) {
-            throw new RuntimeException("Failed to parse properties content", e);
+        return convert(propertiesContent, false);
+    }
+
+    /**
+     * Converts a properties string to YAML format with optional comment preservation.
+     *
+     * @param propertiesContent the properties content as a string
+     * @param preserveComments  whether to preserve comments from the properties file
+     * @return the converted YAML string
+     */
+    public String convert(String propertiesContent, boolean preserveComments) {
+        if (!preserveComments) {
+            Properties properties = new Properties();
+            try (StringReader reader = new StringReader(propertiesContent)) {
+                properties.load(reader);
+            } catch (IOException e) {
+                throw new RuntimeException("Failed to parse properties content", e);
+            }
+            return convertPropertiesToYaml(properties);
+        } else {
+            PropertiesParser.ParseResult parseResult = parser.parse(propertiesContent);
+            return convertWithComments(parseResult);
         }
-        return convertPropertiesToYaml(properties);
     }
 
     /**
@@ -283,5 +301,159 @@ public class PropertiesToYamlConverter {
 
         Yaml yaml = new Yaml(options);
         return yaml.dump(map);
+    }
+
+    private String convertWithComments(PropertiesParser.ParseResult parseResult) {
+        List<PropertyEntry> entries = parseResult.getEntries();
+        List<PropertyEntry> sortedEntries = new ArrayList<>(entries);
+        sortedEntries.sort(Comparator.comparing(PropertyEntry::getKey, new PropertyKeyComparator()));
+
+        Map<String, Object> yamlMap = new LinkedHashMap<>();
+        Map<String, List<String>> commentMap = new LinkedHashMap<>();
+
+        for (PropertyEntry entry : sortedEntries) {
+            String value = entry.getValue();
+
+            List<String> comments = new ArrayList<>(entry.getPrecedingComments());
+
+            if (value.contains(" #INLINE_COMMENT#")) {
+                int index = value.indexOf(" #INLINE_COMMENT#");
+                String inlineComment = value.substring(index + " #INLINE_COMMENT#".length());
+                value = value.substring(0, index);
+                comments.add(inlineComment);
+            }
+
+            if (!comments.isEmpty()) {
+                commentMap.put(entry.getKey(), comments);
+            }
+
+            addToYamlMap(yamlMap, entry.getKey(), convertValue(value));
+        }
+
+        return renderYamlWithComments(yamlMap, commentMap, parseResult.getHeaderComments());
+    }
+
+    private String renderYamlWithComments(Map<String, Object> yamlMap,
+                                          Map<String, List<String>> commentMap,
+                                          List<String> headerComments) {
+        StringBuilder result = new StringBuilder();
+
+        if (!headerComments.isEmpty()) {
+            for (String comment : headerComments) {
+                result.append("# ").append(comment).append("\n");
+            }
+            result.append("\n");
+        }
+
+        renderMapWithComments(result, yamlMap, commentMap, 0, "");
+
+        return result.toString();
+    }
+
+    @SuppressWarnings("unchecked")
+    private void renderMapWithComments(StringBuilder sb, Map<String, Object> map,
+                                       Map<String, List<String>> commentMap,
+                                       int indentLevel, String keyPrefix) {
+        String indent = "  ".repeat(indentLevel);
+
+        for (Map.Entry<String, Object> entry : map.entrySet()) {
+            String key = entry.getKey();
+            Object value = entry.getValue();
+            String fullKey = keyPrefix.isEmpty() ? key : keyPrefix + "." + key;
+
+            List<String> comments = commentMap.get(fullKey);
+            if (comments != null && !comments.isEmpty()) {
+                for (String comment : comments) {
+                    sb.append(indent).append("# ").append(comment).append("\n");
+                }
+            }
+
+            if (value instanceof Map) {
+                sb.append(indent).append(key).append(":\n");
+                renderMapWithComments(sb, (Map<String, Object>) value, commentMap, indentLevel + 1, fullKey);
+            } else if (value instanceof List) {
+                sb.append(indent).append(key).append(":\n");
+                renderListWithComments(sb, (List<Object>) value, commentMap, indentLevel + 1, fullKey);
+            } else {
+                sb.append(indent).append(key).append(": ");
+                renderValue(sb, value);
+                sb.append("\n");
+            }
+        }
+    }
+
+    @SuppressWarnings("unchecked")
+    private void renderListWithComments(StringBuilder sb, List<Object> list,
+                                        Map<String, List<String>> commentMap,
+                                        int indentLevel, String keyPrefix) {
+        String indent = "  ".repeat(indentLevel);
+
+        for (int i = 0; i < list.size(); i++) {
+            Object item = list.get(i);
+            String fullKey = keyPrefix + "[" + i + "]";
+
+            List<String> comments = commentMap.get(fullKey);
+            if (comments != null && !comments.isEmpty()) {
+                for (String comment : comments) {
+                    sb.append(indent).append("# ").append(comment).append("\n");
+                }
+            }
+
+            if (item instanceof Map) {
+                sb.append(indent).append("-\n");
+                renderMapWithComments(sb, (Map<String, Object>) item, commentMap, indentLevel + 1, fullKey);
+            } else {
+                sb.append(indent).append("- ");
+                renderValue(sb, item);
+                sb.append("\n");
+            }
+        }
+    }
+
+    private void renderValue(StringBuilder sb, Object value) {
+        if (value == null) {
+            sb.append("null");
+        } else if (value instanceof String) {
+            String str = (String) value;
+            if (needsQuoting(str)) {
+                sb.append("\"").append(escapeString(str)).append("\"");
+            } else {
+                sb.append(str);
+            }
+        } else if (value instanceof Boolean || value instanceof Number) {
+            sb.append(value);
+        } else {
+            sb.append(value);
+        }
+    }
+
+    private boolean needsQuoting(String value) {
+        if (value.isEmpty()) {
+            return true;
+        }
+
+        String trimmed = value.trim();
+        if (!trimmed.equals(value)) {
+            return true;
+        }
+
+        if (value.contains(":") || value.contains("#") || value.contains("\"") ||
+            value.contains("'") || value.contains("[") || value.contains("]") ||
+            value.contains("{") || value.contains("}") || value.contains(">") ||
+            value.contains("|") || value.contains("&") || value.contains("*")) {
+            return true;
+        }
+
+        String lower = value.toLowerCase();
+        return lower.equals("true") || lower.equals("false") ||
+               lower.equals("null") || lower.equals("yes") || lower.equals("no");
+    }
+
+    private String escapeString(String value) {
+        return value.replace("\\", "\\\\")
+                    .replace("\"", "\\\"")
+                    .replace("\n", "\\n")
+                    .replace("\r", "\\r")
+                    .replace("\t", "\\t");
     }
 }
